@@ -1,343 +1,375 @@
-// src/pages/ManageInvitesPage.jsx
-import React, { useState } from 'react';
-import { useInvite } from '../hooks/useInvite';
-import { useModal } from '../hooks/useModal';
-import Modal from '../components/Common/Modal';
-import InviteCard from '../components/Invite/InviteCard';
-import { searchInvites, sortInvitesByDate } from '../services/inviteService';
-import { exportInvitesAsJSON, importInvitesFromJSON } from '../services/storageService';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { listarConvites } from '../services/api.js';
 import { 
-  ClipboardList, 
-  Search, 
-  FileText, 
-  Calendar, 
-  Upload, 
-  Download, 
-  Trash2, 
-  SearchX,
-  CheckCircle
-} from 'lucide-react';
+    SearchIcon, UsersIcon, CheckCircleIcon, XCircleIcon, TicketIcon, 
+    InboxIcon, EyeIcon, XIcon, ClipboardCopyIcon, TrashIcon 
+} from '../components/icons.jsx';
 import './ManageInvitesPage.css';
 
-function ManageInvitesPage() {
-  const { invites, deleteInvite, error, clearError } = useInvite();
-  const modal = useModal();
-  
+// QR Code Generator Component
+// This component relies on the qrcode.js library being loaded globally via a <script> tag.
+const QRCode = ({ text, size = 160 }) => {
+    const qrCodeRef = useRef(null);
+
+    useEffect(() => {
+        // Ensure the global QRCode library is available
+        if (qrCodeRef.current && typeof window.QRCode !== 'undefined') {
+            // Clear any previous QR code
+            qrCodeRef.current.innerHTML = '';
+            
+            // Generate the new QR code
+            new window.QRCode(qrCodeRef.current, {
+                text: text,
+                width: size,
+                height: size,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: window.QRCode.CorrectLevel.H
+            });
+        }
+    }, [text, size]);
+
+    return <div ref={qrCodeRef} className="qr-code-container"></div>;
+};
+
+const FilterStatus = {
+  ALL: 'all',
+  VALID: 'valid',
+  USED: 'used',
+};
+
+const Header = () => (
+    <header className="page-header">
+      <h1 className="header-title">Gerenciamento de Convites</h1>
+      <nav className="header-subnav">
+        <a href="#" className="header-subnav-link header-subnav-link--active">Dashboard</a>
+        <a href="#" className="header-subnav-link">Eventos</a>
+        <a href="#" className="header-subnav-link">Configurações</a>
+      </nav>
+      <p className="header-subtitle">
+        Acompanhe, pesquise e filtre todos os convites do seu evento em um só lugar.
+      </p>
+    </header>
+);
+
+const StatCard = ({ icon, value, label, type }) => (
+  <div className={`stat-card stat-card--${type}`}>
+    <div className="stat-card-icon-wrapper">
+      {icon}
+    </div>
+    <div className="stat-card-info">
+      <p className="stat-card-value">{value}</p>
+      <p className="stat-card-label">{label}</p>
+    </div>
+  </div>
+);
+
+const InviteModal = ({ invite, onClose }) => {
+    if (!invite) return null;
+
+    const handleModalContentClick = (e) => e.stopPropagation();
+
+    return (
+        <div 
+            className="modal-overlay"
+            onClick={onClose}
+            aria-modal="true"
+            role="dialog"
+        >
+            <div 
+                className="modal-content"
+                onClick={handleModalContentClick}
+            >
+                <button 
+                    onClick={onClose} 
+                    className="modal-close-button"
+                    aria-label="Close modal"
+                >
+                    <XIcon className="icon-sm" />
+                </button>
+                
+                <div className="modal-header">
+                    <div className="modal-status-icon-wrapper">
+                        {invite.utilizado ? (
+                            <div className="icon-background icon-background--danger">
+                                <XCircleIcon className="modal-status-icon modal-status-icon--danger" />
+                            </div>
+                        ) : (
+                            <div className="icon-background icon-background--success">
+                                <CheckCircleIcon className="modal-status-icon modal-status-icon--success" />
+                            </div>
+                        )}
+                    </div>
+                    <h2 className="modal-title">Detalhes do Convite</h2>
+                    <p className="modal-subtitle">Informações completas do convite selecionado.</p>
+                </div>
+                
+                <div className="modal-details">
+                    <div className="detail-item">
+                        <span className="detail-label">Convidado Principal:</span>
+                        <span className="detail-value">{invite.nome_convidado1}</span>
+                    </div>
+                    {invite.nome_convidado2 && (
+                         <div className="detail-item">
+                            <span className="detail-label">Acompanhante:</span>
+                            <span className="detail-value">{invite.nome_convidado2}</span>
+                        </div>
+                    )}
+                    <div className="qr-code-section">
+                        <QRCode text={invite.qr_code} />
+                        <p className="qr-code-value">{invite.qr_code}</p>
+                    </div>
+                     <div className="detail-item">
+                        <span className="detail-label">Status:</span>
+                        <span className={`status-badge ${invite.utilizado ? 'status-badge--used' : 'status-badge--valid'}`}>
+                            {invite.utilizado ? 'Utilizado' : 'Válido'}
+                        </span>
+                    </div>
+                    <div className="detail-item">
+                        <span className="detail-label">Data de Criação:</span>
+                        <span className="detail-value--small">{new Date(invite.data_criacao).toLocaleDateString('pt-BR')}</span>
+                    </div>
+                </div>
+                
+                 <div className="modal-footer">
+                    <button 
+                        onClick={onClose}
+                        className="button button--primary button--full"
+                    >
+                        Fechar
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const InviteRow = ({ invite, onView, onDelete }) => {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(invite.qr_code);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+    
+    return (
+      <tr className="table-row">
+        <td className="table-cell">
+          <div className="guest-name">{invite.nome_convidado1}</div>
+          {invite.nome_convidado2 && <div className="guest-companion">{invite.nome_convidado2}</div>}
+        </td>
+        <td className="table-cell">
+            <button 
+                onClick={handleCopy}
+                className="qr-code-button"
+                title="Copiar QR Code"
+            >
+                {invite.qr_code}
+                {copied ? <CheckCircleIcon className="icon-copy icon-copy--success"/> : <ClipboardCopyIcon className="icon-copy" />}
+            </button>
+        </td>
+        <td className="table-cell">
+          <span className={`status-badge ${invite.utilizado ? 'status-badge--used' : 'status-badge--valid'}`}>
+            {invite.utilizado ? 'Utilizado' : 'Válido'}
+          </span>
+        </td>
+        <td className="table-cell date-cell">
+          {new Date(invite.data_criacao).toLocaleDateString('pt-BR')}
+        </td>
+        <td className="table-cell actions-cell">
+            <div className="actions-container">
+                 <button onClick={() => onView(invite)} className="action-button" title="Visualizar Detalhes">
+                    <EyeIcon className="icon-xs" />
+                </button>
+                <button onClick={() => onDelete(invite.id)} className="action-button action-button--danger" title="Excluir Convite">
+                    <TrashIcon className="icon-xs" />
+                </button>
+            </div>
+        </td>
+      </tr>
+    );
+};
+
+
+const ManageInvitesPage = () => {
+  const [invites, setInvites] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortOrder, setSortOrder] = useState('asc');
-  const [filterType, setFilterType] = useState('all');
-  const [successMessage, setSuccessMessage] = useState('');
+  const [filterStatus, setFilterStatus] = useState(FilterStatus.ALL);
+  const [selectedInvite, setSelectedInvite] = useState(null);
 
-  // Filtrar e ordenar convites
-  const getFilteredInvites = () => {
-    let filtered = invites;
-
-    // Aplicar busca
-    if (searchTerm) {
-      filtered = searchInvites(filtered, searchTerm);
+  useEffect(() => {
+    const fetchInvites = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await listarConvites();
+        setInvites(data);
+      } catch (err) {
+        setError(err.message || 'Ocorreu um erro.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchInvites();
+  }, []);
+  
+  const handleDeleteInvite = useCallback((inviteId) => {
+    if (window.confirm('Tem certeza que deseja excluir este convite? Esta ação não pode ser desfeita.')) {
+        setInvites(prevInvites => prevInvites.filter(invite => invite.id !== inviteId));
     }
+  }, []);
 
-    // Aplicar filtro de tipo
-    const now = new Date();
-    if (filterType === 'upcoming') {
-      filtered = filtered.filter(inv => new Date(inv.eventDate) > now);
-    } else if (filterType === 'past') {
-      filtered = filtered.filter(inv => new Date(inv.eventDate) <= now);
-    }
-
-    // Aplicar ordenação
-    filtered = sortInvitesByDate(filtered, sortOrder);
-
-    return filtered;
-  };
-
-  const filteredInvites = getFilteredInvites();
-
-  // Handle Delete
-  const handleDeleteClick = (inviteId, eventName) => {
-    modal.openModal({
-      title: 'Deletar Convite',
-      message: `Tem certeza que deseja deletar o convite "${eventName}"? Esta ação é irreversível.`,
-      type: 'danger',
-      confirmText: 'Deletar',
-      cancelText: 'Cancelar',
-      onConfirm: async () => {
-        try {
-          await deleteInvite(inviteId);
-          setSuccessMessage('Convite deletado com sucesso!');
-          setTimeout(() => setSuccessMessage(''), 3000);
-        } catch (err) {
-          console.error('Erro ao deletar:', err);
-        }
-      },
-    });
-  };
-
-  // Handle Export
-  const handleExport = () => {
-    if (invites.length === 0) {
-      modal.openModal({
-        title: 'Nenhum Convite',
-        message: 'Você não tem convites para exportar.',
-        type: 'info',
-        confirmText: 'OK',
+  const filteredInvites = useMemo(() => {
+    return invites
+      .filter(invite => {
+        if (filterStatus === FilterStatus.USED) return invite.utilizado;
+        if (filterStatus === FilterStatus.VALID) return !invite.utilizado;
+        return true;
+      })
+      .filter(invite => {
+        const searchTermLower = searchTerm.toLowerCase();
+        return (
+          invite.nome_convidado1.toLowerCase().includes(searchTermLower) ||
+          (invite.nome_convidado2 && invite.nome_convidado2.toLowerCase().includes(searchTermLower)) ||
+          invite.qr_code.toLowerCase().includes(searchTermLower)
+        );
       });
-      return;
+  }, [invites, searchTerm, filterStatus]);
+
+  const stats = useMemo(() => {
+    const total = invites.length;
+    const used = invites.filter(i => i.utilizado).length;
+    const valid = total - used;
+    return { total, used, valid };
+  }, [invites]);
+  
+  const handleViewInvite = useCallback((invite) => {
+    setSelectedInvite(invite);
+  }, []);
+
+  const handleCloseModal = useCallback(() => {
+    setSelectedInvite(null);
+  }, []);
+  
+  const FilterButton = ({ status, label }) => (
+    <button
+      onClick={() => setFilterStatus(status)}
+      className={`filter-button ${filterStatus === status ? 'filter-button--active' : '' }`}
+    >
+      {label}
+    </button>
+  );
+
+  const renderTableContent = () => {
+    if (loading) {
+      return (
+        <tr>
+          <td colSpan="5" className="table-message-cell">
+            <div className="loading-state">
+               <svg className="spinner" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              <span>Carregando convites...</span>
+            </div>
+          </td>
+        </tr>
+      );
     }
-
-    try {
-      exportInvitesAsJSON(invites);
-      setSuccessMessage('Convites exportados com sucesso!');
-      setTimeout(() => setSuccessMessage(''), 3000);
-    } catch (err) {
-      console.error('Erro ao exportar:', err);
-      modal.openModal({
-        title: 'Erro',
-        message: 'Erro ao exportar convites.',
-        type: 'danger',
-        confirmText: 'OK',
-      });
+    if (error) {
+      return (
+        <tr>
+          <td colSpan="5" className="table-message-cell">
+            <div className="error-state">
+              <XCircleIcon className="error-icon"/>
+              <p className="error-title">Erro ao carregar os dados</p>
+              <p className="error-message">{error}</p>
+            </div>
+          </td>
+        </tr>
+      );
     }
-  };
-
-  // Handle Import
-  const handleImport = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const importedInvites = await importInvitesFromJSON(file);
-      setSuccessMessage(`${importedInvites.length} convites importados com sucesso!`);
-      setTimeout(() => setSuccessMessage(''), 3000);
-    } catch (err) {
-      modal.openModal({
-        title: 'Erro na Importação',
-        message: err.message,
-        type: 'danger',
-        confirmText: 'OK',
-      });
+    if (filteredInvites.length === 0) {
+      return (
+        <tr>
+          <td colSpan="5" className="table-message-cell empty-cell">
+            <div className="empty-state">
+              <InboxIcon className="empty-icon"/>
+              <p className="empty-title">Nenhum convite encontrado</p>
+              <p className="empty-message">Tente ajustar sua busca/filtros ou adicione um novo convite para começar.</p>
+               <button className="button button--primary">
+                Criar Novo Convite
+              </button>
+            </div>
+          </td>
+        </tr>
+      );
     }
-
-    // Reset input
-    event.target.value = '';
-  };
-
-  // Handle Delete All
-  const handleDeleteAll = () => {
-    if (invites.length === 0) {
-      modal.openModal({
-        title: 'Nenhum Convite',
-        message: 'Você não tem convites para deletar.',
-        type: 'info',
-        confirmText: 'OK',
-      });
-      return;
-    }
-
-    modal.openModal({
-      title: 'Deletar Todos os Convites',
-      message: `Tem certeza que deseja deletar TODOS os ${invites.length} convites? Esta ação é irreversível!`,
-      type: 'danger',
-      confirmText: 'Deletar Todos',
-      cancelText: 'Cancelar',
-      onConfirm: async () => {
-        try {
-          for (const invite of invites) {
-            await deleteInvite(invite.id);
-          }
-          setSuccessMessage('Todos os convites foram deletados!');
-          setTimeout(() => setSuccessMessage(''), 3000);
-        } catch (err) {
-          console.error('Erro ao deletar todos:', err);
-        }
-      },
-    });
+    return filteredInvites.map(invite => (
+      <InviteRow 
+        key={invite.id} 
+        invite={invite} 
+        onView={handleViewInvite} 
+        onDelete={handleDeleteInvite} 
+      />
+    ));
   };
 
   return (
     <div className="manage-invites-page">
-      <div className="manage-header">
-        <h1>
-          <ClipboardList size={32} style={{ display: 'inline', marginRight: '0.5rem', verticalAlign: 'middle' }} />
-          Gerenciar Convites
-        </h1>
-        <p>Administre, organize e exporte seus convites</p>
+      <div className="container">
+        <Header />
+
+        <section className="stats-grid">
+          <StatCard icon={<TicketIcon className="icon-md" />} value={stats.total} label="Total de Convites" type="total" />
+          <StatCard icon={<CheckCircleIcon className="icon-md" />} value={stats.valid} label="Convites Válidos" type="valid" />
+          <StatCard icon={<UsersIcon className="icon-md" />} value={stats.used} label="Convites Utilizados" type="used" />
+        </section>
+
+        <main className="content-card">
+          <div className="content-card-header">
+            <div className="search-container">
+                <div className="search-icon-wrapper">
+                    <SearchIcon className="search-icon" />
+                </div>
+                <input
+                    type="text"
+                    placeholder="Pesquisar por nome ou QR code..."
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    className="search-input"
+                />
+            </div>
+            <div className="filter-controls">
+                <FilterButton status={FilterStatus.ALL} label="Todos" />
+                <FilterButton status={FilterStatus.VALID} label="Válidos" />
+                <FilterButton status={FilterStatus.USED} label="Utilizados" />
+            </div>
+          </div>
+          <div className="table-container">
+            <table className="invites-table">
+              <thead className="table-header">
+                <tr>
+                  <th scope="col" className="table-heading">Convidado(s)</th>
+                  <th scope="col" className="table-heading">QR Code</th>
+                  <th scope="col" className="table-heading">Status</th>
+                  <th scope="col" className="table-heading">Data de Criação</th>
+                  <th scope="col" className="table-heading text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="table-body">
+                {renderTableContent()}
+              </tbody>
+            </table>
+          </div>
+        </main>
       </div>
-
-      {/* Error Alert */}
-      {error && (
-        <div className="alert alert-error">
-          <p>{error}</p>
-          <button onClick={clearError}>Fechar</button>
-        </div>
-      )}
-
-      {/* Success Message */}
-      {successMessage && (
-        <div className="alert alert-success">
-          <p>
-            <CheckCircle size={18} style={{ display: 'inline', marginRight: '0.5rem', verticalAlign: 'middle' }} />
-            {successMessage}
-          </p>
-        </div>
-      )}
-
-      {/* Controls Section */}
-      <div className="controls-section">
-        <div className="search-bar">
-          <div style={{ position: 'relative' }}>
-            <Search 
-              size={18} 
-              style={{ 
-                position: 'absolute', 
-                left: '1rem', 
-                top: '50%', 
-                transform: 'translateY(-50%)',
-                color: '#9ca3af'
-              }} 
-            />
-            <input
-              type="text"
-              placeholder="Buscar por evento, local ou convidado..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="search-input"
-              style={{ paddingLeft: '3rem' }}
-            />
-          </div>
-        </div>
-
-        <div className="filters-row">
-          <div className="filter-group">
-            <label htmlFor="filterType">Filtro:</label>
-            <select
-              id="filterType"
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="filter-select"
-            >
-              <option value="all">Todos os Convites</option>
-              <option value="upcoming">Próximos Eventos</option>
-              <option value="past">Eventos Passados</option>
-            </select>
-          </div>
-
-          <div className="filter-group">
-            <label htmlFor="sortOrder">Ordenar:</label>
-            <select
-              id="sortOrder"
-              value={sortOrder}
-              onChange={(e) => setSortOrder(e.target.value)}
-              className="filter-select"
-            >
-              <option value="asc">Mais Antigos</option>
-              <option value="desc">Mais Recentes</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats Section */}
-      <div className="stats-section">
-        <div className="stat-box">
-          <span className="stat-icon">
-            <ClipboardList size={24} />
-          </span>
-          <div>
-            <p className="stat-value">{invites.length}</p>
-            <p className="stat-label">Total de Convites</p>
-          </div>
-        </div>
-        <div className="stat-box">
-          <span className="stat-icon">
-            <FileText size={24} />
-          </span>
-          <div>
-            <p className="stat-value">{filteredInvites.length}</p>
-            <p className="stat-label">Resultados Encontrados</p>
-          </div>
-        </div>
-        <div className="stat-box">
-          <span className="stat-icon">
-            <Calendar size={24} />
-          </span>
-          <div>
-            <p className="stat-value">
-              {invites.filter(inv => new Date(inv.eventDate) > new Date()).length}
-            </p>
-            <p className="stat-label">Próximos Eventos</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Action Buttons */}
-      <div className="action-buttons">
-        <label className="btn btn-secondary">
-          <Upload size={18} />
-          Importar
-          <input
-            type="file"
-            accept=".json"
-            onChange={handleImport}
-            style={{ display: 'none' }}
-          />
-        </label>
-        <button onClick={handleExport} className="btn btn-secondary">
-          <Download size={18} />
-          Exportar
-        </button>
-        <button onClick={handleDeleteAll} className="btn btn-danger">
-          <Trash2 size={18} />
-          Deletar Todos
-        </button>
-      </div>
-
-      {/* Content */}
-      {filteredInvites.length === 0 ? (
-        <div className="empty-state">
-          <p className="empty-icon">
-            <SearchX size={48} />
-          </p>
-          <h3>Nenhum Convite Encontrado</h3>
-          <p>
-            {searchTerm
-              ? 'Nenhum convite corresponde à sua busca'
-              : 'Comece criando seu primeiro convite'}
-          </p>
-        </div>
-      ) : (
-        <div className="invites-list">
-          <h2 className="list-title">
-            {filteredInvites.length} Convite{filteredInvites.length !== 1 ? 's' : ''}
-          </h2>
-          <div className="invites-grid">
-            {filteredInvites.map(invite => (
-              <InviteCard
-                key={invite.id}
-                invite={invite}
-                onPreview={() => {
-                  // Será implementado com rota
-                }}
-                onDelete={() => handleDeleteClick(invite.id, invite.eventName)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Modal */}
-      <Modal
-        isOpen={modal.isOpen}
-        title={modal.title}
-        message={modal.message}
-        type={modal.type}
-        confirmText={modal.confirmText}
-        cancelText={modal.cancelText}
-        onConfirm={modal.onConfirm}
-        onCancel={modal.closeModal}
-      />
+      <InviteModal invite={selectedInvite} onClose={handleCloseModal} />
     </div>
   );
-}
+};
 
 export default ManageInvitesPage;
