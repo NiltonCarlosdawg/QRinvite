@@ -1,4 +1,4 @@
-# Getting Started with Create React App
+# Uma Apilcação Usada para gerar convites com qrcodes para qualquer evento
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
