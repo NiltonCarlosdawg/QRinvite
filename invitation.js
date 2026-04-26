@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 
 // --- Initial Data ---
 const initialInvitationData = {
@@ -39,11 +40,30 @@ const Decoration = ({ className = '' }) => (
         <path d="M0 25 C 50 10, 150 40, 200 25 C 250 10, 350 40, 400 25" stroke="currentColor" fill="none" strokeWidth="0.5" />
     </svg>
 );
-const QrCodePlaceholder = () => (
-     <svg className="w-16 h-16 text-[#a1806b]" viewBox="0 0 100 100" fill="currentColor">
-        <path d="M10 10h30v30h-30z M15 15h20v20h-20z M60 10h30v30h-30z M65 15h20v20h-20z M10 60h30v30h-30z M15 65h20v20h-20z M60 60h30v30h-30z M65 65h20v20h-20z M45 45h10v10h-10z M45 60h10v10h-10z M60 45h10v10h-10z M75 45h15v10h-15z M45 75h10v15h-10z M45 10h10v10h-10z M10 45h10v10h-10z M25 45h10v10h-10z" />
-    </svg>
-);
+const QrCode = () => {
+  // Create a string with the invitation data for the QR code
+  const qrData = JSON.stringify({
+    groom1: invitationData.groom1,
+    groom2: invitationData.groom2,
+    mainNames: invitationData.mainNames,
+    date: invitationData.date,
+    ceremony: invitationData.ceremony,
+    reception: invitationData.reception,
+    contact: invitationData.contact
+  });
+
+  return (
+    <div className="w-16 h-16">
+      <QRCodeSVG 
+        value={qrData} 
+        size={120} 
+        level="Q" 
+        includeMargin={false} 
+        className="text-[#a1806b]"
+      />
+    </div>
+  );
+};
 
 
 // --- Reusable Input Components ---
@@ -208,9 +228,9 @@ const Invitation = () => {
                     <div className="flex-grow"></div>
                     
                     <div className="rodape-info w-full flex items-end justify-between mt-4">
-                        <div className="qr-code">
-                            <QrCodePlaceholder />
-                        </div>
+<div className="qr-code">
+                             <QrCode />
+                           </div>
                         <div className="info-rodape text-right text-xs">
                             <strong>Por gentileza, não leve crianças<br/>É confirmar a Presença</strong>
                             <div className="w-full">

@@ -1,126 +1,90 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-// Criar novo convite
 export const criarConvite = async (dados) => {
   try {
     const response = await axios.post(`${API_URL}/convites`, dados);
-    return response.data; // o backend retorna o objeto do convite criado
+    return response.data;
   } catch (error) {
-    throw new Error(
-      error.response?.data?.error || 'Erro ao criar convite no servidor.'
-    );
+    throw new Error(error.response?.data?.error || 'Erro ao criar convite no servidor.');
   }
 };
 
-// Validar convite por QR Code
-export const validarConvite = async (qrCode) => {
-  try {
-    const response = await fetch(`${API_URL}/convites/${qrCode}`);
-
-    if (!response.ok) {
-      throw new Error('Erro ao validar convite');
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Erro:', error);
-    throw error;
-  }
-};
-
-// Marcar convite como utilizado
-export const utilizarConvite = async (qrCode) => {
-  try {
-    const response = await fetch(`${API_URL}/convites/${qrCode}/utilizar`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('Erro ao utilizar convite');
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Erro:', error);
-    throw error;
-  }
-};
-
-// Listar todos os convites (desenvolvimento)
 export const listarConvites = async () => {
   try {
-    const response = await fetch(`${API_URL}/convites`);
-
-    if (!response.ok) {
-      throw new Error('Erro ao listar convites');
-    }
-
-    return await response.json();
+    const response = await axios.get(`${API_URL}/convites`);
+    return response.data;
   } catch (error) {
-    console.error('Erro:', error);
-    throw error;
+    throw new Error(error.response?.data?.error || 'Erro ao listar convites.');
   }
 };
 
-// ========================================
-// EXEMPLO DE USO NO COMPONENTE:
-// ========================================
-/*
-import { criarConvite, validarConvite, utilizarConvite, listarConvites } from '../services/api';
-
-// No seu componente CreatePage:
-const handleCreateInvite = async () => {
+export const buscarConvitePorId = async (id) => {
   try {
-    const resultado = await criarConvite(
-      formData.guestName1,
-      formData.guestName2 || null
+    const response = await axios.get(`${API_URL}/convites/${id}`);
+    return response.data;
+  } catch (error) {
+    throw new Error(error.response?.data?.error || 'Erro ao buscar convite.');
+  }
+};
+
+export const marcarConviteComoVisualizado = async (id) => {
+  try {
+    const response = await axios.patch(`${API_URL}/convites/${id}/visualizado`);
+    return response.data;
+  } catch (error) {
+    throw new Error(error.response?.data?.error || 'Erro ao registar visualização.');
+  }
+};
+
+export const atualizarRsvp = async (id, dados) => {
+  try {
+    const response = await axios.patch(`${API_URL}/convites/${id}/rsvp`, dados);
+    return response.data;
+  } catch (error) {
+    throw new Error(error.response?.data?.error || 'Erro ao atualizar RSVP.');
+  }
+};
+
+export const reservarPresente = async (id, presenteId, dados) => {
+  try {
+    const response = await axios.patch(`${API_URL}/convites/${id}/presentes/${presenteId}/reservar`, dados);
+    return response.data;
+  } catch (error) {
+    throw new Error(error.response?.data?.error || 'Erro ao reservar presente.');
+  }
+};
+
+export const validarConvite = async (qrCode) => {
+  try {
+    const response = await axios.get(`${API_URL}/convites/validar/${qrCode}`);
+    return response.data;
+  } catch (error) {
+    throw new Error(
+      error.response?.data?.mensagem ||
+      error.response?.data?.error ||
+      'Erro ao validar convite.'
     );
-    
-    console.log('Convite criado:', resultado);
-    // resultado.convite.qrCode -> use isso para gerar o QR Code
-    
-  } catch (error) {
-    console.error('Erro ao criar:', error);
   }
 };
 
-// Para validar um convite:
-const handleValidarConvite = async (qrCode) => {
+export const utilizarConvite = async (qrCode) => {
   try {
-    const resultado = await validarConvite(qrCode);
-    
-    if (resultado.valido) {
-      console.log('Convite válido:', resultado.convite);
-    } else {
-      console.log('Convite inválido:', resultado.mensagem);
-    }
+    const response = await axios.patch(`${API_URL}/convites/utilizar/${qrCode}`);
+    return response.data;
   } catch (error) {
-    console.error('Erro:', error);
+    throw new Error(error.response?.data?.error || 'Erro ao utilizar convite.');
   }
 };
 
-// Para marcar como utilizado:
-const handleUtilizarConvite = async (qrCode) => {
+export const eliminarConvite = async (id) => {
   try {
-    const resultado = await utilizarConvite(qrCode);
-    console.log(resultado.message);
+    const response = await axios.delete(`${API_URL}/convites/${id}`);
+    return response.data;
   } catch (error) {
-    console.error('Erro:', error);
+    throw new Error(error.response?.data?.error || 'Erro ao eliminar convite.');
   }
 };
 
-// Para listar todos:
-const handleListarConvites = async () => {
-  try {
-    const convites = await listarConvites();
-    console.log('Todos os convites:', convites);
-  } catch (error) {
-    console.error('Erro:', error);
-  }
-};
-*/
+export { API_URL };

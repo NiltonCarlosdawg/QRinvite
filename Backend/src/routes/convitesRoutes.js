@@ -1,14 +1,32 @@
 const express = require('express');
 const router = express.Router();
-const convitesController = require('../controllers/convitesController');
+const ctrl = require('../controllers/convitesController');
 
-// POST /api/convites - Criar novo convite
-router.post('/convites', convitesController.criarConvite);
+// Listar todos
+router.get('/convites', ctrl.listarConvites);
 
-// GET /api/convites/:qrCode - Validar convite
-router.get('/convites/:qrCode', convitesController.validarConvite);
+// Criar
+router.post('/convites', ctrl.criarConvite);
 
-// PATCH /api/convites/:qrCode/utilizar - Marcar como utilizado
-router.patch('/convites/:qrCode/utilizar', convitesController.utilizarConvite);
+// Validar por QR (UUID)
+router.get('/convites/validar/:qrCode', ctrl.validarConvite);
+
+// Utilizar por QR (UUID)
+router.patch('/convites/utilizar/:qrCode', ctrl.utilizarConvite);
+
+// Buscar por ID
+router.get('/convites/:id', ctrl.buscarConvitePorId);
+
+// Marcar visualizado por ID
+router.patch('/convites/:id/visualizado', ctrl.marcarVisualizacao);
+
+// RSVP por ID
+router.patch('/convites/:id/rsvp', ctrl.atualizarRSVP);
+
+// Reservar presente por ID
+router.patch('/convites/:id/presentes/:presenteId/reservar', ctrl.reservarPresente);
+
+// Eliminar por ID
+router.delete('/convites/:id', ctrl.eliminarConvite);
 
 module.exports = router;
